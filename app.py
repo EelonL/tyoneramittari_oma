@@ -367,15 +367,6 @@ def measurement_ui() -> None:
         st.warning("Lisää ensin vähintään yksi työnerä.")
         return
 
-    if state["active_item"]:
-        started = parse_ts(state["active_start"])
-        elapsed = now_local() - started
-        st.info(
-            f"Käynnissä: **{state['active_item']}**  |  aloitettu {state['active_start']}  |  kesto nyt {human_duration(elapsed.total_seconds())}"
-        )
-    else:
-        st.write("Mittaus ei ole juuri nyt käynnissä.")
-
     st.caption(
         "Työnerät näkyvät yhdellä sivulla pystysuuntaisena listana. Ensimmäiset rivit näkyvät heti, ja lisää työneriä löytyy rullaamalla alaspäin."
     )
@@ -405,62 +396,39 @@ def measurement_ui() -> None:
             background: #0b3d91 !important;
             color: white !important;
             border: 1px solid #0b3d91 !important;
+            min-height: 96px;
         }
-        .live-status-card {
-            position: sticky;
-            bottom: 4.8rem;
-            background: #0b3d91;
-            color: white;
-            border-radius: 18px;
-            padding: 0.8rem 1rem;
-            margin-top: 0.75rem;
-            margin-bottom: 0.5rem;
-            box-shadow: 0 6px 18px rgba(11,61,145,0.22);
-            z-index: 998;
-        }
-        .live-status-label {
-            font-size: 0.82rem;
-            opacity: 0.9;
-            margin-bottom: 0.2rem;
-        }
-        .live-status-name {
-            font-size: 1.05rem;
-            font-weight: 700;
-            line-height: 1.25;
-        }
-        .live-status-time {
-            font-size: 1.4rem;
-            font-weight: 800;
-            margin-top: 0.25rem;
-            letter-spacing: 0.02em;
-        }
-        .stop-bar {
+        .mobile-stop-bar {
             position: sticky;
             bottom: 0;
-            background: rgba(255,255,255,0.96);
-            padding-top: 0.5rem;
-            padding-bottom: 0.4rem;
+            background: rgba(255,255,255,0.98);
+            padding-top: 0.45rem;
+            padding-bottom: calc(0.45rem + env(safe-area-inset-bottom));
             border-top: 1px solid #e5e7eb;
-            z-index: 999;
+            z-index: 9999;
+            margin-top: 0.5rem;
         }
-        .stop-bar div[data-testid="stButton"] > button {
-            min-height: 64px;
+        .mobile-stop-bar div[data-testid="stButton"] > button {
+            min-height: 68px;
             border-radius: 18px;
             background: #c62828 !important;
             color: white !important;
             border: 1px solid #c62828 !important;
             text-align: center;
             font-weight: 700;
+            margin-bottom: 0;
         }
         @media (max-width: 768px) {
             .block-container {
-                padding-left: 0.5rem;
-                padding-right: 0.5rem;
+                padding-left: 0.45rem;
+                padding-right: 0.45rem;
+                padding-bottom: 5.5rem;
             }
             div[data-testid="stButton"] > button {
                 width: 100%;
-                min-height: 82px;
+                min-height: 84px;
                 font-size: 1.08rem;
+                padding: 1rem 0.95rem;
             }
         }
         </style>
@@ -468,11 +436,20 @@ def measurement_ui() -> None:
         unsafe_allow_html=True,
     )
 
+    active_item = state.get("active_item")
+    active_start = state.get("active_start")
+    active_elapsed = ""
+
+    if active_item and active_start:
+        elapsed_seconds = (now_local() - parse_ts(active_start)).total_seconds()
+        active_elapsed = f"
+⏱ {human_duration(elapsed_seconds)}"
+
     for idx, item in enumerate(state["work_items"], start=1):
+        is_active = active_item == item
         label = f"{idx}. {item}"
-        is_active = state["active_item"] == item
         if is_active:
-            label = f"🟢 {idx}. {item} (käynnissä)"
+            label = f"🟢 {idx}. {item}{active_elapsed}"
             st.markdown('<div class="active-work-item">', unsafe_allow_html=True)
             if st.button(label, key=f"item_{idx}", use_container_width=True):
                 start_item(item)
@@ -483,29 +460,18 @@ def measurement_ui() -> None:
                 start_item(item)
                 st.rerun()
 
+    if active_item:
+        time.sleep(1)
+        st.rerun()
+
 
 def stop_button_ui() -> None:
     state = st.session_state.app_state
 
-    current_name = state.get("active_item")
-    current_start = state.get("active_start")
-
-    if current_name and current_start:
-        elapsed_seconds = (now_local() - parse_ts(current_start)).total_seconds()
-        status_html = f"""
-        <div class="live-status-card">
-            <div class="live-status-label">Käynnissä nyt</div>
-            <div class="live-status-name">{current_name}</div>
-            <div class="live-status-time">{human_duration(elapsed_seconds)}</div>
-        </div>
-        """
-        st.markdown(status_html, unsafe_allow_html=True)
-        time.sleep(1)
-        st.rerun()
-
-    st.markdown('<div class="stop-bar">', unsafe_allow_html=True)
+    st.markdown('<div class="mobile-stop-bar">', unsafe_allow_html=True)
     disabled = state["active_item"] is None
-    if st.button("🛑 Lopeta nykyinen työnerä", use_container_width=True, disabled=disabled):
+    stop_label = "🛑 Lopeta mittaus" if not disabled else "🛑 Ei aktiivista työnerää"
+    if st.button(stop_label, use_container_width=True, disabled=disabled):
         stop_measurement()
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
@@ -544,7 +510,6 @@ def live_tables() -> None:
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="⏱️", layout="wide")
-    st_autorefresh = getattr(st, "autorefresh", None)
     ensure_state()
 
     st.title("⏱️ Työnerämittari")
