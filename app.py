@@ -408,25 +408,15 @@ def measurement_ui() -> None:
             min-height: 96px;
             box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
         }
-        .mobile-stop-bar {
-            position: sticky;
-            bottom: 0;
-            background: rgba(255,255,255,0.98);
-            padding-top: 0.45rem;
-            padding-bottom: calc(0.45rem + env(safe-area-inset-bottom));
-            border-top: 1px solid #e5e7eb;
-            z-index: 9999;
-            margin-top: 0.6rem;
-        }
-        .mobile-stop-bar div[data-testid="stButton"] > button {
-            min-height: 68px;
+        .stop-section div[data-testid="stButton"] > button {
+            min-height: 72px;
             border-radius: 20px;
             background: var(--tts-stop) !important;
             color: white !important;
             border: 1px solid var(--tts-stop) !important;
             text-align: center;
             font-weight: 700;
-            margin-bottom: 0;
+            margin-top: 0.25rem;
         }
         .tts-app-header {
             display: flex;
@@ -488,7 +478,8 @@ def measurement_ui() -> None:
 
     if active_item and active_start:
         elapsed_seconds = (now_local() - parse_ts(active_start)).total_seconds()
-        active_elapsed = f"\n⏱ {human_duration(elapsed_seconds)}"
+        active_elapsed = f"
+⏱ {human_duration(elapsed_seconds)}"
 
     for idx, item in enumerate(state["work_items"], start=1):
         is_active = active_item == item
@@ -514,13 +505,15 @@ def measurement_ui() -> None:
 def stop_button_ui() -> None:
     state = st.session_state.app_state
 
-    st.markdown('<div class="mobile-stop-bar">', unsafe_allow_html=True)
     disabled = state["active_item"] is None
     stop_label = "🛑 Lopeta mittaus" if not disabled else "🛑 Ei aktiivista työnerää"
-    if st.button(stop_label, use_container_width=True, disabled=disabled):
+
+    st.markdown("---")
+    st.subheader("3. Mittauksen lopetus")
+    st.caption("Lopeta käynnissä oleva työnerä tästä painikkeesta.")
+    if st.button(stop_label, key="stop_measurement_main", use_container_width=True, disabled=disabled):
         stop_measurement()
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def recovery_info() -> None:
@@ -589,8 +582,11 @@ def main() -> None:
     work_items_editor()
     st.divider()
     measurement_ui()
-    stop_button_ui()
     recovery_info()
+    st.divider()
+    st.markdown('<div class="stop-section">', unsafe_allow_html=True)
+    stop_button_ui()
+    st.markdown('</div>', unsafe_allow_html=True)
     st.divider()
     live_tables()
     st.divider()
