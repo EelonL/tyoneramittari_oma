@@ -58,7 +58,6 @@ def default_state() -> Dict[str, Any]:
         "measurement_label": "",
         "started_at": None,
         "finished_at": None,
-        "upload_target": "Lataa Excel laitteelle",
     }
 
 
@@ -227,6 +226,7 @@ def build_excel_bytes() -> bytes:
 
     output.seek(0)
     wb = load_workbook(output)
+
     for ws in wb.worksheets:
         for cell in ws[1]:
             cell.font = Font(bold=True)
@@ -242,6 +242,119 @@ def build_excel_bytes() -> bytes:
     wb.save(final_output)
     final_output.seek(0)
     return final_output.getvalue()
+
+
+def render_brand_header() -> None:
+    logo_candidates = [
+        "TTS_Logo_Blue_RGB_SA.jpg",
+        "tts_logo.jpg",
+        "tts_logo.png",
+    ]
+    logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
+
+    st.markdown(
+        """
+        <style>
+        :root {
+            --tts-blue: #1973ff;
+            --tts-blue-dark: #0f5fe0;
+            --tts-blue-soft: #f3f7ff;
+            --tts-border: #cfe0ff;
+            --tts-text: #12324a;
+            --tts-stop: #c62828;
+        }
+
+        .tts-app-title {
+            font-size: 1.55rem;
+            font-weight: 800;
+            color: var(--tts-text);
+            margin: 0;
+            line-height: 1.15;
+        }
+
+        .tts-app-subtitle {
+            font-size: 0.95rem;
+            color: #5d7287;
+            margin-top: 0.25rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .work-items-section div[data-testid="stButton"] > button {
+            width: 100%;
+            min-height: 78px;
+            border-radius: 22px;
+            text-align: left;
+            font-size: 1.08rem;
+            font-weight: 600;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.55rem;
+            border: 1px solid var(--tts-border);
+            background: var(--tts-blue-soft);
+            color: var(--tts-text);
+            box-shadow: 0 2px 8px rgba(25,115,255,0.08);
+        }
+
+        .work-items-section div[data-testid="stButton"] > button:hover {
+            border-color: var(--tts-blue);
+            box-shadow: 0 4px 12px rgba(25,115,255,0.14);
+        }
+
+        .active-work-item button {
+            background: var(--tts-blue-dark) !important;
+            color: white !important;
+            border: 1px solid var(--tts-blue-dark) !important;
+            min-height: 96px;
+            box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
+        }
+
+        .stop-section div[data-testid="stButton"] > button {
+            min-height: 72px;
+            border-radius: 20px;
+            background: var(--tts-stop) !important;
+            color: white !important;
+            border: 1px solid var(--tts-stop) !important;
+            text-align: center;
+            font-weight: 700;
+            margin-top: 0.25rem;
+        }
+
+        @media (max-width: 768px) {
+            .block-container {
+                padding-left: 0.45rem;
+                padding-right: 0.45rem;
+                padding-bottom: 2rem;
+            }
+
+            .tts-app-title {
+                font-size: 1.28rem;
+            }
+
+            .work-items-section div[data-testid="stButton"] > button {
+                width: 100%;
+                min-height: 84px;
+                font-size: 1.08rem;
+                padding: 1rem 0.95rem;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2 = st.columns([4, 1])
+    with c1:
+        st.markdown(
+            """
+            <div class="tts-app-title">⏱️ Työnerämittari</div>
+            <div class="tts-app-subtitle">Työnerien käynnistys, vaihto ja lopetus yhdellä näkymällä</div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c2:
+        if logo_path:
+            st.image(logo_path, use_container_width=True)
+
+    st.write("Tällä sovelluksella voit mitata työnerien alkamis- ja päättymisaikoja sekä muodostaa lopuksi Excel-tiedoston.")
 
 
 def work_items_editor() -> None:
@@ -277,111 +390,7 @@ def work_items_editor() -> None:
             st.rerun()
 
 
-def render_brand_header() -> None:
-    logo_candidates = [
-        "TTS_Logo_Blue_RGB_SA.jpg",
-        "tts_logo.jpg",
-        "tts_logo.png",
-    ]
-    logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
-
-    st.markdown(
-        """
-        <style>
-        :root {
-            --tts-blue: #1973ff;
-            --tts-blue-dark: #0f5fe0;
-            --tts-blue-soft: #f3f7ff;
-            --tts-border: #cfe0ff;
-            --tts-text: #12324a;
-            --tts-stop: #c62828;
-        }
-        .tts-app-title {
-            font-size: 1.55rem;
-            font-weight: 800;
-            color: var(--tts-text);
-            margin: 0;
-            line-height: 1.15;
-        }
-        .tts-app-subtitle {
-            font-size: 0.95rem;
-            color: #5d7287;
-            margin-top: 0.25rem;
-        }
-        .stop-section div[data-testid="stButton"] > button {
-            min-height: 72px;
-            border-radius: 20px;
-            background: var(--tts-stop) !important;
-            color: white !important;
-            border: 1px solid var(--tts-stop) !important;
-            text-align: center;
-            font-weight: 700;
-            margin-top: 0.25rem;
-        }
-        .work-items-section div[data-testid="stButton"] > button {
-            width: 100%;
-            min-height: 78px;
-            border-radius: 22px;
-            text-align: left;
-            font-size: 1.08rem;
-            font-weight: 600;
-            padding: 1rem 1.1rem;
-            margin-bottom: 0.55rem;
-            border: 1px solid var(--tts-border);
-            background: var(--tts-blue-soft);
-            color: var(--tts-text);
-            box-shadow: 0 2px 8px rgba(25,115,255,0.08);
-        }
-        .work-items-section div[data-testid="stButton"] > button:hover {
-            border-color: var(--tts-blue);
-            box-shadow: 0 4px 12px rgba(25,115,255,0.14);
-        }
-        .active-work-item button {
-            background: var(--tts-blue-dark) !important;
-            color: white !important;
-            border: 1px solid var(--tts-blue-dark) !important;
-            min-height: 96px;
-            box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
-        }
-        @media (max-width: 768px) {
-            .block-container {
-                padding-left: 0.45rem;
-                padding-right: 0.45rem;
-                padding-bottom: 2rem;
-            }
-            .tts-app-title {
-                font-size: 1.28rem;
-            }
-            .work-items-section div[data-testid="stButton"] > button {
-                width: 100%;
-                min-height: 84px;
-                font-size: 1.08rem;
-                padding: 1rem 0.95rem;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    c1, c2 = st.columns([4, 1])
-    with c1:
-        st.markdown(
-            """
-            <div>
-                <div class="tts-app-title">⏱️ Työnerämittari</div>
-                <div class="tts-app-subtitle">Työnerien käynnistys, vaihto ja lopetus yhdellä näkymällä</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with c2:
-        if logo_path:
-            st.image(logo_path, use_container_width=True)
-
-    st.write("Tällä sovelluksella voit mitata työnerien alkamis- ja päättymisaikoja sekä muodostaa lopuksi Excel-tiedoston.")
-
-
+@st.fragment(run_every="1s")
 def measurement_ui() -> None:
     st.subheader("2. Käynnistä mittaus")
     state = st.session_state.app_state
@@ -401,6 +410,7 @@ def measurement_ui() -> None:
         active_elapsed = f" ⏱ {human_duration(elapsed_seconds)}"
 
     st.markdown('<div class="work-items-section">', unsafe_allow_html=True)
+
     for idx, item in enumerate(state["work_items"], start=1):
         is_active = active_item == item
         label = f"{idx}. {item}"
@@ -416,11 +426,8 @@ def measurement_ui() -> None:
             if st.button(label, key=f"item_{idx}", use_container_width=True):
                 start_item(item)
                 st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    if active_item:
-        time.sleep(1)
-        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def stop_button_ui() -> None:
@@ -465,11 +472,13 @@ def live_tables() -> None:
 
     st.subheader("Mittausdata")
     t1, t2 = st.tabs(["Tapahtumat", "Yhteenveto"])
+
     with t1:
         if detail.empty:
             st.write("Ei vielä rivejä.")
         else:
             st.dataframe(detail, use_container_width=True)
+
     with t2:
         if summary.empty:
             st.write("Ei vielä yhteenvetoa.")
