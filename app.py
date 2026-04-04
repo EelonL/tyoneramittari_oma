@@ -2,6 +2,7 @@ import io
 import json
 import os
 import time
+import html
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -374,29 +375,38 @@ def measurement_ui() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --tts-blue: #1973ff;
+            --tts-blue-dark: #0f5fe0;
+            --tts-blue-soft: #f3f7ff;
+            --tts-border: #cfe0ff;
+            --tts-text: #12324a;
+            --tts-stop: #c62828;
+        }
         div[data-testid="stButton"] > button {
             width: 100%;
             min-height: 78px;
-            border-radius: 20px;
+            border-radius: 22px;
             text-align: left;
             font-size: 1.08rem;
             font-weight: 600;
             padding: 1rem 1.1rem;
-            margin-bottom: 0.5rem;
-            border: 1px solid #bcd5f6;
-            background: #e8f1ff;
-            color: #12324a;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            margin-bottom: 0.55rem;
+            border: 1px solid var(--tts-border);
+            background: var(--tts-blue-soft);
+            color: var(--tts-text);
+            box-shadow: 0 2px 8px rgba(25,115,255,0.08);
         }
         div[data-testid="stButton"] > button:hover {
-            border-color: #7aa7e8;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            border-color: var(--tts-blue);
+            box-shadow: 0 4px 12px rgba(25,115,255,0.14);
         }
         .active-work-item button {
-            background: #0b3d91 !important;
+            background: var(--tts-blue-dark) !important;
             color: white !important;
-            border: 1px solid #0b3d91 !important;
+            border: 1px solid var(--tts-blue-dark) !important;
             min-height: 96px;
+            box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
         }
         .mobile-stop-bar {
             position: sticky;
@@ -406,23 +416,59 @@ def measurement_ui() -> None:
             padding-bottom: calc(0.45rem + env(safe-area-inset-bottom));
             border-top: 1px solid #e5e7eb;
             z-index: 9999;
-            margin-top: 0.5rem;
+            margin-top: 0.6rem;
         }
         .mobile-stop-bar div[data-testid="stButton"] > button {
             min-height: 68px;
-            border-radius: 18px;
-            background: #c62828 !important;
+            border-radius: 20px;
+            background: var(--tts-stop) !important;
             color: white !important;
-            border: 1px solid #c62828 !important;
+            border: 1px solid var(--tts-stop) !important;
             text-align: center;
             font-weight: 700;
             margin-bottom: 0;
+        }
+        .tts-app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+            padding: 0.1rem 0 0.5rem 0;
+        }
+        .tts-app-title {
+            font-size: 1.55rem;
+            font-weight: 800;
+            color: var(--tts-text);
+            margin: 0;
+            line-height: 1.15;
+        }
+        .tts-app-subtitle {
+            font-size: 0.95rem;
+            color: #5d7287;
+            margin-top: 0.25rem;
+        }
+        .tts-logo-wrap {
+            flex: 0 0 auto;
+        }
+        .tts-logo-wrap img {
+            max-height: 52px;
+            width: auto;
         }
         @media (max-width: 768px) {
             .block-container {
                 padding-left: 0.45rem;
                 padding-right: 0.45rem;
                 padding-bottom: 5.5rem;
+            }
+            .tts-app-header {
+                align-items: flex-start;
+            }
+            .tts-app-title {
+                font-size: 1.28rem;
+            }
+            .tts-logo-wrap img {
+                max-height: 42px;
             }
             div[data-testid="stButton"] > button {
                 width: 100%;
@@ -447,9 +493,10 @@ def measurement_ui() -> None:
 
     for idx, item in enumerate(state["work_items"], start=1):
         is_active = active_item == item
-        label = f"{idx}. {item}"
+        safe_item = html.escape(item)
+        label = f"{idx}. {safe_item}"
         if is_active:
-            label = f"🟢 {idx}. {item}{active_elapsed}"
+            label = f"🟢 {idx}. {safe_item}{active_elapsed}"
             st.markdown('<div class="active-work-item">', unsafe_allow_html=True)
             if st.button(label, key=f"item_{idx}", use_container_width=True):
                 start_item(item)
@@ -512,7 +559,30 @@ def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="⏱️", layout="wide")
     ensure_state()
 
-    st.title("⏱️ Työnerämittari")
+    logo_candidates = [
+        "TTS_Logo_Blue_RGB_SA.jpg",
+        "tts_logo.jpg",
+        "tts_logo.png",
+    ]
+    logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
+
+    header_left, header_right = st.columns([4, 1])
+    with header_left:
+        st.markdown(
+            """
+            <div class="tts-app-header">
+                <div>
+                    <div class="tts-app-title">⏱️ Työnerämittari</div>
+                    <div class="tts-app-subtitle">Työnerien käynnistys, vaihto ja lopetus yhdellä näkymällä</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with header_right:
+        if logo_path:
+            st.image(logo_path, use_container_width=True)
+
     st.write(
         "Tällä sovelluksella voit mitata työnerien alkamis- ja päättymisaikoja sekä muodostaa lopuksi Excel-tiedoston."
     )
