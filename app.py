@@ -254,8 +254,7 @@ def work_items_editor() -> None:
         placeholder="Esim. Huoneiston A123 työvaiheiden seuranta",
     )
 
-    initial = "
-".join(state.get("work_items", []))
+    initial = "\n".join(state.get("work_items", []))
     text = st.text_area(
         "Syötä yksi työnerä per rivi",
         value=initial,
