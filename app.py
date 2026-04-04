@@ -1,8 +1,6 @@
 import io
 import json
-import os
 import time
-import html
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,25 +9,6 @@ import pandas as pd
 import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Font
-
-# ============================================================
-# Työnerämittari / Streamlit Community Cloud -yhteensopiva
-# ------------------------------------------------------------
-# Pääidea:
-# 1) Käyttäjä syöttää työnerät.
-# 2) Mittaus alkaa painamalla työnerää.
-# 3) Työnerän vaihto tapahtuu painamalla seuraavaa työnerää.
-# 4) Mittauksen lopetus tapahtuu painamalla punaista nappia.
-# 5) Jokainen tapahtuma tallennetaan heti:
-#    - st.session_stateen
-#    - paikalliseen palautusjonoon (JSON)
-# 6) Lopuksi data muunnetaan Exceliksi.
-#
-# HUOM:
-# Tämä toteutus on tehty niin, että lyhyet verkkokatkokset eivät yleensä
-# pilaa mittausta, jos selainvälilehti pysyy auki. Täydelliseen offline-
-# kestävyyteen tarvitaan selaimen localStorage / PWA-ratkaisu tai natiiviappi.
-# ============================================================
 
 APP_TITLE = "Työnerämittari"
 DATA_DIR = Path(".runtime_data")
@@ -53,7 +32,7 @@ def duration_seconds(start_iso: str, end_iso: str) -> float:
 
 
 def human_duration(seconds: float) -> str:
-    seconds = int(round(seconds))
+    seconds = max(0, int(round(seconds)))
     h = seconds // 3600
     m = (seconds % 3600) // 60
     s = seconds % 60
@@ -80,28 +59,10 @@ def default_state() -> Dict[str, Any]:
         "started_at": None,
         "finished_at": None,
         "upload_target": "Lataa Excel laitteelle",
-        "onedrive_folder": "",
-        "sharepoint_site": "",
-        "sharepoint_drive": "",
-        "sharepoint_folder": "",
     }
 
 
-def ensure_state() -> None:
-    if "app_state" not in st.session_state:
-        st.session_state.app_state = default_state()
-        recover_if_possible()
-
-
-def persist_state() -> None:
-    session_file = get_session_file()
-    payload = st.session_state.app_state.copy()
-    payload["last_saved_at"] = fmt_ts(now_local())
-    session_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
 def recover_if_possible() -> None:
-    # Palautetaan uusin sessiotiedosto, jos sellainen on olemassa.
     files = sorted(DATA_DIR.glob("session_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not files:
         return
@@ -116,10 +77,26 @@ def recover_if_possible() -> None:
         pass
 
 
+def ensure_state() -> None:
+    if "app_state" not in st.session_state:
+        st.session_state.app_state = default_state()
+        recover_if_possible()
+
+
+def persist_state() -> None:
+    session_file = get_session_file()
+    payload = dict(st.session_state.app_state)
+    payload["last_saved_at"] = fmt_ts(now_local())
+    session_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def add_event(event_type: str, item_name: Optional[str] = None, extra: Optional[Dict[str, Any]] = None) -> None:
     state = st.session_state.app_state
-    ts = fmt_ts(now_local())
-    payload = {"ts": ts, "type": event_type, "item": item_name}
+    payload = {
+        "ts": fmt_ts(now_local()),
+        "type": event_type,
+        "item": item_name,
+    }
     if extra:
         payload.update(extra)
     state["events"].append(payload)
@@ -181,6 +158,7 @@ def reset_all() -> None:
 def segments_df() -> pd.DataFrame:
     state = st.session_state.app_state
     rows: List[Dict[str, Any]] = []
+
     for i, seg in enumerate(state["segments"], start=1):
         rows.append(
             {
@@ -193,7 +171,6 @@ def segments_df() -> pd.DataFrame:
             }
         )
 
-    # Myös käynnissä oleva segmentti näkyviin esikatseluun
     if state["active_item"] and state["active_start"]:
         now_iso = fmt_ts(now_local())
         rows.append(
@@ -249,7 +226,6 @@ def build_excel_bytes() -> bytes:
         detail.to_excel(writer, index=False, sheet_name="Tapahtumat")
 
     output.seek(0)
-
     wb = load_workbook(output)
     for ws in wb.worksheets:
         for cell in ws[1]:
@@ -268,65 +244,6 @@ def build_excel_bytes() -> bytes:
     return final_output.getvalue()
 
 
-def upload_to_m365_placeholder(file_bytes: bytes, filename: str) -> str:
-    """
-    Tähän kohtaan liitetään myöhemmin Microsoft Graph -tallennus.
-
-    Toteutus vaatii käytännössä:
-    - Entra ID / Azure App Registration
-    - OAuth-kirjautumisen
-    - Microsoft Graph -oikeudet
-    - kohdekansion tunnistamisen (OneDrive/SharePoint)
-
-    Tässä vaiheessa palautetaan informatiivinen viesti.
-    """
-    _ = file_bytes, filename
-    return (
-        "Valmis Graph-upload ei ole vielä kytketty tähän demo-versioon. "
-        "Excel voidaan ladata laitteelle heti, ja tämän jälkeen tallentaa OneDriveen/Teamsiin."
-    )
-
-
-def save_ui() -> None:
-    st.subheader("4. Excel-tiedoston muodostus ja tallennus")
-    state = st.session_state.app_state
-
-    filename = f"tyoneramittaus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    excel_bytes = build_excel_bytes()
-
-    target = st.radio(
-        "Tallennustapa",
-        ["Lataa Excel laitteelle", "OneDrive / Teams (Graph-integraatio)"],
-        horizontal=False,
-        key="save_target_radio",
-    )
-    state["upload_target"] = target
-    persist_state()
-
-    if target == "Lataa Excel laitteelle":
-        st.download_button(
-            "Lataa Excel",
-            data=excel_bytes,
-            file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-        st.caption("Tämä toimii heti myös Streamlit Community Cloudissa.")
-    else:
-        st.text_input("OneDrive-kansio (esim. Mittaukset/Työmaa_A)", key="onedrive_folder_input")
-        state["onedrive_folder"] = st.session_state.get("onedrive_folder_input", "")
-        persist_state()
-
-        if st.button("Tallenna OneDriveen / Teamsiin", use_container_width=True):
-            msg = upload_to_m365_placeholder(excel_bytes, filename)
-            st.info(msg)
-
-        st.caption(
-            "Teams-kanavien tiedostot sijaitsevat taustalla SharePointissa. "
-            "Sama Graph-integraatio voidaan kohdistaa joko käyttäjän OneDriveen tai Teams/SharePoint-kirjastoon."
-        )
-
-
 def work_items_editor() -> None:
     st.subheader("1. Määritä työnerät")
     state = st.session_state.app_state
@@ -337,40 +254,41 @@ def work_items_editor() -> None:
         placeholder="Esim. Huoneiston A123 työvaiheiden seuranta",
     )
 
-    initial = "\n".join(state.get("work_items", []))
+    initial = "
+".join(state.get("work_items", []))
     text = st.text_area(
         "Syötä yksi työnerä per rivi",
         value=initial,
-        height=180,
-        placeholder="Esim.\nMuottityö\nRaudoitus\nBetonointi\nSiivous",
+        height=160,
+        placeholder="Esim.
+Muottityö
+Raudoitus
+Betonointi
+Siivous",
     )
 
     items = [row.strip() for row in text.splitlines() if row.strip()]
     state["work_items"] = items
     persist_state()
 
-    cols = st.columns([1, 1])
-    with cols[0]:
+    c1, c2 = st.columns(2)
+    with c1:
         if st.button("Tallenna työnerät", use_container_width=True):
             persist_state()
             st.success("Työnerät tallennettu.")
-    with cols[1]:
+    with c2:
         if st.button("Tyhjennä kaikki", use_container_width=True):
             reset_all()
             st.rerun()
 
 
-def measurement_ui() -> None:
-    st.subheader("2. Käynnistä mittaus")
-    state = st.session_state.app_state
-
-    if not state["work_items"]:
-        st.warning("Lisää ensin vähintään yksi työnerä.")
-        return
-
-    st.caption(
-        "Työnerät näkyvät yhdellä sivulla pystysuuntaisena listana. Ensimmäiset rivit näkyvät heti, ja lisää työneriä löytyy rullaamalla alaspäin."
-    )
+def render_brand_header() -> None:
+    logo_candidates = [
+        "TTS_Logo_Blue_RGB_SA.jpg",
+        "tts_logo.jpg",
+        "tts_logo.png",
+    ]
+    logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
 
     st.markdown(
         """
@@ -382,49 +300,6 @@ def measurement_ui() -> None:
             --tts-border: #cfe0ff;
             --tts-text: #12324a;
             --tts-stop: #c62828;
-        }
-        div[data-testid="stButton"] > button {
-            width: 100%;
-            min-height: 78px;
-            border-radius: 22px;
-            text-align: left;
-            font-size: 1.08rem;
-            font-weight: 600;
-            padding: 1rem 1.1rem;
-            margin-bottom: 0.55rem;
-            border: 1px solid var(--tts-border);
-            background: var(--tts-blue-soft);
-            color: var(--tts-text);
-            box-shadow: 0 2px 8px rgba(25,115,255,0.08);
-        }
-        div[data-testid="stButton"] > button:hover {
-            border-color: var(--tts-blue);
-            box-shadow: 0 4px 12px rgba(25,115,255,0.14);
-        }
-        .active-work-item button {
-            background: var(--tts-blue-dark) !important;
-            color: white !important;
-            border: 1px solid var(--tts-blue-dark) !important;
-            min-height: 96px;
-            box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
-        }
-        .stop-section div[data-testid="stButton"] > button {
-            min-height: 72px;
-            border-radius: 20px;
-            background: var(--tts-stop) !important;
-            color: white !important;
-            border: 1px solid var(--tts-stop) !important;
-            text-align: center;
-            font-weight: 700;
-            margin-top: 0.25rem;
-        }
-        .tts-app-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            margin-bottom: 0.5rem;
-            padding: 0.1rem 0 0.5rem 0;
         }
         .tts-app-title {
             font-size: 1.55rem;
@@ -438,29 +313,51 @@ def measurement_ui() -> None:
             color: #5d7287;
             margin-top: 0.25rem;
         }
-        .tts-logo-wrap {
-            flex: 0 0 auto;
+        .stop-section div[data-testid="stButton"] > button {
+            min-height: 72px;
+            border-radius: 20px;
+            background: var(--tts-stop) !important;
+            color: white !important;
+            border: 1px solid var(--tts-stop) !important;
+            text-align: center;
+            font-weight: 700;
+            margin-top: 0.25rem;
         }
-        .tts-logo-wrap img {
-            max-height: 52px;
-            width: auto;
+        .work-items-section div[data-testid="stButton"] > button {
+            width: 100%;
+            min-height: 78px;
+            border-radius: 22px;
+            text-align: left;
+            font-size: 1.08rem;
+            font-weight: 600;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.55rem;
+            border: 1px solid var(--tts-border);
+            background: var(--tts-blue-soft);
+            color: var(--tts-text);
+            box-shadow: 0 2px 8px rgba(25,115,255,0.08);
+        }
+        .work-items-section div[data-testid="stButton"] > button:hover {
+            border-color: var(--tts-blue);
+            box-shadow: 0 4px 12px rgba(25,115,255,0.14);
+        }
+        .active-work-item button {
+            background: var(--tts-blue-dark) !important;
+            color: white !important;
+            border: 1px solid var(--tts-blue-dark) !important;
+            min-height: 96px;
+            box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
         }
         @media (max-width: 768px) {
             .block-container {
                 padding-left: 0.45rem;
                 padding-right: 0.45rem;
-                padding-bottom: 5.5rem;
-            }
-            .tts-app-header {
-                align-items: flex-start;
+                padding-bottom: 2rem;
             }
             .tts-app-title {
                 font-size: 1.28rem;
             }
-            .tts-logo-wrap img {
-                max-height: 42px;
-            }
-            div[data-testid="stButton"] > button {
+            .work-items-section div[data-testid="stButton"] > button {
                 width: 100%;
                 min-height: 84px;
                 font-size: 1.08rem;
@@ -472,29 +369,59 @@ def measurement_ui() -> None:
         unsafe_allow_html=True,
     )
 
+    c1, c2 = st.columns([4, 1])
+    with c1:
+        st.markdown(
+            """
+            <div>
+                <div class="tts-app-title">⏱️ Työnerämittari</div>
+                <div class="tts-app-subtitle">Työnerien käynnistys, vaihto ja lopetus yhdellä näkymällä</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c2:
+        if logo_path:
+            st.image(logo_path, use_container_width=True)
+
+    st.write("Tällä sovelluksella voit mitata työnerien alkamis- ja päättymisaikoja sekä muodostaa lopuksi Excel-tiedoston.")
+
+
+def measurement_ui() -> None:
+    st.subheader("2. Käynnistä mittaus")
+    state = st.session_state.app_state
+
+    if not state["work_items"]:
+        st.warning("Lisää ensin vähintään yksi työnerä.")
+        return
+
+    st.caption("Työnerät näkyvät yhdellä sivulla pystysuuntaisena listana. Lisää työneriä löytyy rullaamalla alaspäin.")
+
     active_item = state.get("active_item")
     active_start = state.get("active_start")
     active_elapsed = ""
 
     if active_item and active_start:
         elapsed_seconds = (now_local() - parse_ts(active_start)).total_seconds()
-        active_elapsed = f"   ⏱ {human_duration(elapsed_seconds)}"
+        active_elapsed = f" ⏱ {human_duration(elapsed_seconds)}"
 
+    st.markdown('<div class="work-items-section">', unsafe_allow_html=True)
     for idx, item in enumerate(state["work_items"], start=1):
         is_active = active_item == item
-        safe_item = html.escape(item)
-        label = f"{idx}. {safe_item}"
+        label = f"{idx}. {item}"
+
         if is_active:
-            label = f"🟢 {idx}. {safe_item}{active_elapsed}"
+            label = f"🟢 {idx}. {item}{active_elapsed}"
             st.markdown('<div class="active-work-item">', unsafe_allow_html=True)
             if st.button(label, key=f"item_{idx}", use_container_width=True):
                 start_item(item)
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
             if st.button(label, key=f"item_{idx}", use_container_width=True):
                 start_item(item)
                 st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if active_item:
         time.sleep(1)
@@ -503,16 +430,25 @@ def measurement_ui() -> None:
 
 def stop_button_ui() -> None:
     state = st.session_state.app_state
-
-    disabled = state["active_item"] is None
-    stop_label = "🛑 Lopeta mittaus" if not disabled else "🛑 Ei aktiivista työnerää"
+    active_item = state.get("active_item")
+    active_start = state.get("active_start")
 
     st.markdown("---")
     st.subheader("3. Mittauksen lopetus")
     st.caption("Lopeta käynnissä oleva työnerä tästä painikkeesta.")
-    if st.button(stop_label, key="stop_measurement_main", use_container_width=True, disabled=disabled):
-        stop_measurement()
-        st.rerun()
+
+    stop_label = "🛑 Lopeta mittaus"
+    if active_item:
+        stop_label = f"🛑 Lopeta: {active_item}"
+
+    st.markdown('<div class="stop-section">', unsafe_allow_html=True)
+    if st.button(stop_label, key="stop_measurement_main", use_container_width=True):
+        if active_item and active_start:
+            stop_measurement()
+            st.rerun()
+        else:
+            st.warning("Aktiivista työnerää ei ole käynnissä.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def recovery_info() -> None:
@@ -546,46 +482,31 @@ def live_tables() -> None:
             st.dataframe(summary, use_container_width=True)
 
 
+def save_ui() -> None:
+    st.subheader("4. Excel-tiedoston muodostus")
+    filename = f"tyoneramittaus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    excel_bytes = build_excel_bytes()
+
+    st.download_button(
+        "Lataa Excel",
+        data=excel_bytes,
+        file_name=filename,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+    st.caption("Excel ladataan käyttäjän laitteelle.")
+
+
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, page_icon="⏱️", layout="wide")
     ensure_state()
 
-    logo_candidates = [
-        "TTS_Logo_Blue_RGB_SA.jpg",
-        "tts_logo.jpg",
-        "tts_logo.png",
-    ]
-    logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
-
-    header_left, header_right = st.columns([4, 1])
-    with header_left:
-        st.markdown(
-            """
-            <div class="tts-app-header">
-                <div>
-                    <div class="tts-app-title">⏱️ Työnerämittari</div>
-                    <div class="tts-app-subtitle">Työnerien käynnistys, vaihto ja lopetus yhdellä näkymällä</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with header_right:
-        if logo_path:
-            st.image(logo_path, use_container_width=True)
-
-    st.write(
-        "Tällä sovelluksella voit mitata työnerien alkamis- ja päättymisaikoja sekä muodostaa lopuksi Excel-tiedoston."
-    )
-
+    render_brand_header()
     work_items_editor()
     st.divider()
     measurement_ui()
-    recovery_info()
-    st.divider()
-    st.markdown('<div class="stop-section">', unsafe_allow_html=True)
     stop_button_ui()
-    st.markdown('</div>', unsafe_allow_html=True)
+    recovery_info()
     st.divider()
     live_tables()
     st.divider()
