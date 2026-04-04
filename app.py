@@ -259,11 +259,7 @@ def work_items_editor() -> None:
         "Syötä yksi työnerä per rivi",
         value=initial,
         height=160,
-        placeholder="Esim.
-Muottityö
-Raudoitus
-Betonointi
-Siivous",
+        placeholder="Esim.\nMuottityö\nRaudoitus\nBetonointi\nSiivous",
     )
 
     items = [row.strip() for row in text.splitlines() if row.strip()]
