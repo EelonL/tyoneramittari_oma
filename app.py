@@ -478,8 +478,7 @@ def measurement_ui() -> None:
 
     if active_item and active_start:
         elapsed_seconds = (now_local() - parse_ts(active_start)).total_seconds()
-        active_elapsed = f"
-⏱ {human_duration(elapsed_seconds)}"
+        active_elapsed = f"   ⏱ {human_duration(elapsed_seconds)}"
 
     for idx, item in enumerate(state["work_items"], start=1):
         is_active = active_item == item
