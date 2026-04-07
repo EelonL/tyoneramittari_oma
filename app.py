@@ -246,9 +246,9 @@ def build_excel_bytes() -> bytes:
 
 def render_brand_header() -> None:
     logo_candidates = [
-        "TTS_Logo_Blue_RGB_SA.jpg",
-        "tts_logo.jpg",
-        "tts_logo.png",
+        "Logo.jpg",
+        "Logo.jpg",
+        "Logo.png",
     ]
     logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
 
