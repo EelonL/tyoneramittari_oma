@@ -65,7 +65,6 @@ def recover_if_possible() -> None:
     files = sorted(DATA_DIR.glob("session_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not files:
         return
-
     latest = files[0]
     try:
         recovered = json.loads(latest.read_text(encoding="utf-8"))
@@ -91,11 +90,7 @@ def persist_state() -> None:
 
 def add_event(event_type: str, item_name: Optional[str] = None, extra: Optional[Dict[str, Any]] = None) -> None:
     state = st.session_state.app_state
-    payload = {
-        "ts": fmt_ts(now_local()),
-        "type": event_type,
-        "item": item_name,
-    }
+    payload = {"ts": fmt_ts(now_local()), "type": event_type, "item": item_name}
     if extra:
         payload.update(extra)
     state["events"].append(payload)
@@ -105,11 +100,9 @@ def add_event(event_type: str, item_name: Optional[str] = None, extra: Optional[
 def start_item(item_name: str) -> None:
     state = st.session_state.app_state
     ts = fmt_ts(now_local())
-
     if not state["measurement_started"]:
         state["measurement_started"] = True
         state["started_at"] = ts
-
     if state["active_item"] is not None and state["active_start"] is not None:
         previous = {
             "item": state["active_item"],
@@ -121,7 +114,6 @@ def start_item(item_name: str) -> None:
         add_event("switch", item_name, {"previous_item": state["active_item"]})
     else:
         add_event("start", item_name)
-
     state["active_item"] = item_name
     state["active_start"] = ts
     state["measurement_finished"] = False
@@ -132,7 +124,6 @@ def stop_measurement() -> None:
     state = st.session_state.app_state
     if state["active_item"] is None or state["active_start"] is None:
         return
-
     ts = fmt_ts(now_local())
     segment = {
         "item": state["active_item"],
@@ -157,32 +148,25 @@ def reset_all() -> None:
 def segments_df() -> pd.DataFrame:
     state = st.session_state.app_state
     rows: List[Dict[str, Any]] = []
-
     for i, seg in enumerate(state["segments"], start=1):
-        rows.append(
-            {
-                "Järjestys": i,
-                "Työnerä": seg["item"],
-                "Alkuaika": seg["start"],
-                "Loppuaika": seg["end"],
-                "Kesto (s)": round(float(seg["duration_seconds"]), 1),
-                "Kesto (hh:mm:ss)": human_duration(float(seg["duration_seconds"])),
-            }
-        )
-
+        rows.append({
+            "Järjestys": i,
+            "Työnerä": seg["item"],
+            "Alkuaika": seg["start"],
+            "Loppuaika": seg["end"],
+            "Kesto (s)": round(float(seg["duration_seconds"]), 1),
+            "Kesto (hh:mm:ss)": human_duration(float(seg["duration_seconds"])),
+        })
     if state["active_item"] and state["active_start"]:
         now_iso = fmt_ts(now_local())
-        rows.append(
-            {
-                "Järjestys": len(rows) + 1,
-                "Työnerä": state["active_item"],
-                "Alkuaika": state["active_start"],
-                "Loppuaika": "KÄYNNISSÄ",
-                "Kesto (s)": round(float(duration_seconds(state["active_start"], now_iso)), 1),
-                "Kesto (hh:mm:ss)": human_duration(float(duration_seconds(state["active_start"], now_iso))),
-            }
-        )
-
+        rows.append({
+            "Järjestys": len(rows) + 1,
+            "Työnerä": state["active_item"],
+            "Alkuaika": state["active_start"],
+            "Loppuaika": "KÄYNNISSÄ",
+            "Kesto (s)": round(float(duration_seconds(state["active_start"], now_iso)), 1),
+            "Kesto (hh:mm:ss)": human_duration(float(duration_seconds(state["active_start"], now_iso))),
+        })
     return pd.DataFrame(rows)
 
 
@@ -190,11 +174,9 @@ def summary_df() -> pd.DataFrame:
     base = segments_df()
     if base.empty:
         return pd.DataFrame(columns=["Työnerä", "Toistot", "Yhteensä (s)", "Yhteensä (hh:mm:ss)"])
-
     finished_only = base[base["Loppuaika"] != "KÄYNNISSÄ"].copy()
     if finished_only.empty:
         return pd.DataFrame(columns=["Työnerä", "Toistot", "Yhteensä (s)", "Yhteensä (hh:mm:ss)"])
-
     grouped = (
         finished_only.groupby("Työnerä", as_index=False)
         .agg({"Kesto (s)": "sum", "Järjestys": "count"})
@@ -208,25 +190,20 @@ def summary_df() -> pd.DataFrame:
 def build_excel_bytes() -> bytes:
     detail = segments_df()
     summary = summary_df()
-    meta = pd.DataFrame(
-        [
-            {"Kenttä": "Mittauksen nimi", "Arvo": st.session_state.app_state.get("measurement_label", "")},
-            {"Kenttä": "Mittaus aloitettu", "Arvo": st.session_state.app_state.get("started_at", "")},
-            {"Kenttä": "Mittaus lopetettu", "Arvo": st.session_state.app_state.get("finished_at", "")},
-            {"Kenttä": "Aktiivinen sessiotiedosto", "Arvo": str(get_session_file())},
-        ]
-    )
-
+    meta = pd.DataFrame([
+        {"Kenttä": "Mittauksen nimi", "Arvo": st.session_state.app_state.get("measurement_label", "")},
+        {"Kenttä": "Mittaus aloitettu", "Arvo": st.session_state.app_state.get("started_at", "")},
+        {"Kenttä": "Mittaus lopetettu", "Arvo": st.session_state.app_state.get("finished_at", "")},
+        {"Kenttä": "Aktiivinen sessiotiedosto", "Arvo": str(get_session_file())},
+    ])
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         meta.to_excel(writer, index=False, sheet_name="Yhteenveto")
         start_row = len(meta) + 3
         summary.to_excel(writer, index=False, sheet_name="Yhteenveto", startrow=start_row)
         detail.to_excel(writer, index=False, sheet_name="Tapahtumat")
-
     output.seek(0)
     wb = load_workbook(output)
-
     for ws in wb.worksheets:
         for cell in ws[1]:
             cell.font = Font(bold=True)
@@ -237,116 +214,215 @@ def build_excel_bytes() -> bytes:
                 value = "" if cell.value is None else str(cell.value)
                 max_len = max(max_len, len(value))
             ws.column_dimensions[col_letter].width = min(max_len + 2, 40)
-
     final_output = io.BytesIO()
     wb.save(final_output)
     final_output.seek(0)
     return final_output.getvalue()
 
 
+GLOBAL_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+    --tts-blue: #1973ff;
+    --tts-blue-dark: #0f5fe0;
+    --tts-blue-soft: rgba(25, 115, 255, 0.07);
+    --tts-border: rgba(25, 115, 255, 0.18);
+    --tts-text: #0d2540;
+    --tts-muted: #5a7490;
+    --tts-stop: #c62828;
+    --tts-stop-dark: #a31f1f;
+    --tts-green: #00875a;
+    --radius: 18px;
+}
+
+html, body, [class*="css"], .stApp, button, input, textarea {
+    font-family: 'DM Sans', sans-serif !important;
+}
+
+/* ── Gradienttitausta ── */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(145deg, #eef4ff 0%, #f8faff 55%, #f2eeff 100%);
+    min-height: 100vh;
+}
+[data-testid="stHeader"],
+[data-testid="stToolbar"] {
+    background: transparent !important;
+}
+[data-testid="stSidebar"] {
+    background: rgba(255,255,255,0.65);
+    backdrop-filter: blur(14px);
+    border-right: 1px solid var(--tts-border);
+}
+
+/* ── Ylätunniste ── */
+.tts-app-title {
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: var(--tts-text);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+}
+.tts-app-subtitle {
+    font-size: 0.92rem;
+    color: var(--tts-muted);
+    margin-top: 0.3rem;
+    font-weight: 500;
+}
+
+/* ── Aktiivinen statusbanneri ── */
+.active-banner {
+    background: linear-gradient(90deg, #1973ff 0%, #4f9dff 100%);
+    color: white;
+    border-radius: var(--radius);
+    padding: 0.9rem 1.3rem;
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 6px 24px rgba(25,115,255,0.28);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    letter-spacing: -0.01em;
+}
+.active-banner .timer {
+    font-family: 'DM Mono', monospace;
+    font-size: 1.1rem;
+    background: rgba(255,255,255,0.2);
+    border-radius: 8px;
+    padding: 0.1rem 0.55rem;
+    margin-left: auto;
+}
+
+/* ── Työnerapainikkeet (glassmorphism) ── */
+.work-items-section div[data-testid="stButton"] > button {
+    width: 100%;
+    min-height: 74px;
+    border-radius: var(--radius);
+    text-align: left;
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 1rem 1.2rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--tts-border) !important;
+    background: rgba(255, 255, 255, 0.68) !important;
+    backdrop-filter: blur(12px);
+    color: var(--tts-text) !important;
+    box-shadow: 0 2px 12px rgba(25,115,255,0.07);
+    transition: transform 0.13s ease, box-shadow 0.13s ease, background 0.13s ease;
+    letter-spacing: -0.01em;
+}
+.work-items-section div[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(25,115,255,0.16);
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-color: var(--tts-blue) !important;
+}
+
+/* ── Aktiivinen työnerapainike ── */
+@keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(25,115,255,0.45), 0 6px 20px rgba(25,115,255,0.25); }
+    50%       { box-shadow: 0 0 0 7px rgba(25,115,255,0), 0 6px 20px rgba(25,115,255,0.25); }
+}
+.active-work-item div[data-testid="stButton"] > button {
+    background: linear-gradient(135deg, #1973ff 0%, #2e87ff 100%) !important;
+    color: white !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    min-height: 90px;
+    animation: pulse-border 2.2s ease infinite;
+    font-size: 1.1rem;
+}
+.active-work-item div[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #0f5fe0 0%, #1973ff 100%) !important;
+}
+
+/* ── Lopetuspainike ── */
+.stop-section div[data-testid="stButton"] > button {
+    min-height: 68px;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--tts-stop) 0%, #e53935 100%) !important;
+    color: white !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+    text-align: center;
+    font-weight: 700;
+    font-size: 1.05rem;
+    box-shadow: 0 4px 16px rgba(198,40,40,0.28);
+    transition: transform 0.13s ease, box-shadow 0.13s ease;
+}
+.stop-section div[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(198,40,40,0.35);
+}
+
+/* ── Metriikat ── */
+[data-testid="metric-container"] {
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--tts-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    box-shadow: 0 2px 12px rgba(25,115,255,0.07);
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 1.5rem !important;
+    color: var(--tts-blue) !important;
+    font-weight: 600 !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tts-muted);
+}
+
+/* ── Osioiden otsikot ── */
+h2, h3 {
+    color: var(--tts-text) !important;
+    letter-spacing: -0.02em !important;
+}
+
+/* ── Divider ── */
+hr {
+    border-color: var(--tts-border) !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* ── Mobiili ── */
+@media (max-width: 768px) {
+    .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+    .tts-app-title { font-size: 1.35rem; }
+}
+</style>
+"""
+
+
 def render_brand_header() -> None:
-    logo_candidates = [
-        "Logo.jpg",
-        "Logo.jpg",
-        "Logo.png",
-    ]
-    logo_path = next((p for p in logo_candidates if Path(p).exists()), None)
+    logo_path = next((p for p in ["Logo.jpg", "Logo.png"] if Path(p).exists()), None)
 
-    st.markdown(
-        """
-        <style>
-        :root {
-            --tts-blue: #1973ff;
-            --tts-blue-dark: #0f5fe0;
-            --tts-blue-soft: #f3f7ff;
-            --tts-border: #cfe0ff;
-            --tts-text: #12324a;
-            --tts-stop: #c62828;
-        }
+    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
-        .tts-app-title {
-            font-size: 1.55rem;
-            font-weight: 800;
-            color: var(--tts-text);
-            margin: 0;
-            line-height: 1.15;
-        }
+    # Sivupalkki: toimintavarmuustiedot
+    with st.sidebar:
+        st.markdown("### ⚙️ Tietoa sovelluksesta")
+        st.markdown(
+            """
+            - Jokainen aloitus, vaihto ja lopetus tallennetaan heti JSON-palautustiedostoon.
+            - Lyhyt verkkokatkos ei yleensä riko mittausta, jos selainvälilehti pysyy auki.
+            - Täydellinen selainpäivitys tai sessioiden katkeaminen Streamlit Cloudissa voi silti katkaista tilan.
+            - Tuotantoversiossa suositellaan lisäksi selaimen localStorage-varmistusta tai taustatietokantaa.
+            """
+        )
 
-        .tts-app-subtitle {
-            font-size: 0.95rem;
-            color: #5d7287;
-            margin-top: 0.25rem;
-            margin-bottom: 0.75rem;
-        }
-
-        .work-items-section div[data-testid="stButton"] > button {
-            width: 100%;
-            min-height: 78px;
-            border-radius: 22px;
-            text-align: left;
-            font-size: 1.08rem;
-            font-weight: 600;
-            padding: 1rem 1.1rem;
-            margin-bottom: 0.55rem;
-            border: 1px solid var(--tts-border);
-            background: var(--tts-blue-soft);
-            color: var(--tts-text);
-            box-shadow: 0 2px 8px rgba(25,115,255,0.08);
-        }
-
-        .work-items-section div[data-testid="stButton"] > button:hover {
-            border-color: var(--tts-blue);
-            box-shadow: 0 4px 12px rgba(25,115,255,0.14);
-        }
-
-        .active-work-item button {
-            background: var(--tts-blue-dark) !important;
-            color: white !important;
-            border: 1px solid var(--tts-blue-dark) !important;
-            min-height: 96px;
-            box-shadow: 0 8px 18px rgba(25,115,255,0.28) !important;
-        }
-
-        .stop-section div[data-testid="stButton"] > button {
-            min-height: 72px;
-            border-radius: 20px;
-            background: var(--tts-stop) !important;
-            color: white !important;
-            border: 1px solid var(--tts-stop) !important;
-            text-align: center;
-            font-weight: 700;
-            margin-top: 0.25rem;
-        }
-
-        @media (max-width: 768px) {
-            .block-container {
-                padding-left: 0.45rem;
-                padding-right: 0.45rem;
-                padding-bottom: 2rem;
-            }
-
-            .tts-app-title {
-                font-size: 1.28rem;
-            }
-
-            .work-items-section div[data-testid="stButton"] > button {
-                width: 100%;
-                min-height: 84px;
-                font-size: 1.08rem;
-                padding: 1rem 0.95rem;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    c1, c2 = st.columns([4, 1])
+    c1, c2 = st.columns([5, 1])
     with c1:
         st.markdown(
             """
             <div class="tts-app-title">⏱️ Työnerämittari</div>
-            <div class="tts-app-subtitle">Työnerien käynnistys, vaihto ja lopetus yhdellä näkymällä</div>
+            <div class="tts-app-subtitle">Käynnistä, vaihda ja lopeta työnerät yhdellä näkymällä</div>
             """,
             unsafe_allow_html=True,
         )
@@ -354,7 +430,7 @@ def render_brand_header() -> None:
         if logo_path:
             st.image(logo_path, use_container_width=True)
 
-    st.write("Tällä sovelluksella voit mitata työnerien alkamis- ja päättymisaikoja sekä muodostaa lopuksi Excel-tiedoston.")
+    st.write("Mittaa työnerien alkamis- ja päättymisajat sekä lataa tulokset Excel-tiedostona.")
 
 
 def work_items_editor() -> None:
@@ -399,16 +475,37 @@ def measurement_ui() -> None:
         st.warning("Lisää ensin vähintään yksi työnerä.")
         return
 
-    st.caption("Työnerät näkyvät yhdellä sivulla pystysuuntaisena listana. Lisää työneriä löytyy rullaamalla alaspäin.")
-
     active_item = state.get("active_item")
     active_start = state.get("active_start")
     active_elapsed = ""
 
     if active_item and active_start:
         elapsed_seconds = (now_local() - parse_ts(active_start)).total_seconds()
-        active_elapsed = f" ⏱ {human_duration(elapsed_seconds)}"
+        active_elapsed = human_duration(elapsed_seconds)
 
+        # ── Aktiivinen statusbanneri ──
+        st.markdown(
+            f"""
+            <div class="active-banner">
+                🟢 Käynnissä: <strong>{active_item}</strong>
+                <span class="timer">{active_elapsed}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ── Metriikat ──
+    summary = summary_df()
+    total_segments = len(state["segments"])
+    total_seconds = summary["Yhteensä (s)"].sum() if not summary.empty else 0.0
+    unique_items = summary["Työnerä"].nunique() if not summary.empty else 0
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Mittausaika yhteensä", human_duration(float(total_seconds)))
+    m2.metric("Vaihtoja yhteensä", str(total_segments))
+    m3.metric("Eri työnerät", str(unique_items))
+
+    st.caption("Valitse aktiivinen työnerä alla. Lisää työneriä löytyy rullaamalla alaspäin.")
     st.markdown('<div class="work-items-section">', unsafe_allow_html=True)
 
     for idx, item in enumerate(state["work_items"], start=1):
@@ -416,7 +513,7 @@ def measurement_ui() -> None:
         label = f"{idx}. {item}"
 
         if is_active:
-            label = f"🟢 {idx}. {item}{active_elapsed}"
+            label = f"🟢 {idx}. {item}  ·  {active_elapsed}"
             st.markdown('<div class="active-work-item">', unsafe_allow_html=True)
             if st.button(label, key=f"item_{idx}", use_container_width=True):
                 start_item(item)
@@ -437,7 +534,6 @@ def stop_button_ui() -> None:
 
     st.markdown("---")
     st.subheader("3. Mittauksen lopetus")
-    st.caption("Lopeta käynnissä oleva työnerä tästä painikkeesta.")
 
     stop_label = "🛑 Lopeta mittaus"
     if active_item:
@@ -451,19 +547,6 @@ def stop_button_ui() -> None:
         else:
             st.warning("Aktiivista työnerää ei ole käynnissä.")
     st.markdown("</div>", unsafe_allow_html=True)
-
-
-def recovery_info() -> None:
-    with st.expander("Tietoa toimintavarmuudesta"):
-        st.markdown(
-            """
-            - Jokainen aloitus, vaihto ja lopetus tallennetaan heti JSON-palautustiedostoon.
-            - Lyhyt verkkokatkos ei yleensä riko mittausta, jos selainvälilehti pysyy auki.
-            - Jos yhteys palaa, mittausta voidaan jatkaa ja Excel muodostaa lopuksi.
-            - Täydellinen selainpäivitys tai sessioiden katkeaminen Streamlit Cloudissa voi silti katkaista tilan.
-            - Tuotantoversiossa suosittelen lisäksi selaimen localStorage-varmistusta tai taustatietokantaa.
-            """
-        )
 
 
 def live_tables() -> None:
@@ -492,7 +575,7 @@ def save_ui() -> None:
     excel_bytes = build_excel_bytes()
 
     st.download_button(
-        "Lataa Excel",
+        "⬇️ Lataa Excel",
         data=excel_bytes,
         file_name=filename,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -510,7 +593,6 @@ def main() -> None:
     st.divider()
     measurement_ui()
     stop_button_ui()
-    recovery_info()
     st.divider()
     live_tables()
     st.divider()
