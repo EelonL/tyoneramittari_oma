@@ -599,39 +599,16 @@ def observation_ui() -> None:
 
     st.caption(f"Kirjataan kohteelle: **{active_item}**")
 
-    # Pikavalinnat
-    st.markdown("**Joutuisuus %**")
-    pace_cols = st.columns(6)
-    preset_values = [60, 75, 100, 115, 125, 133]
-    labels =       ["60", "75", "100", "115", "125", "133"]
-
-    selected_pace = st.session_state.get("obs_pace_value", 100)
-
-    for i, (col, val, lbl) in enumerate(zip(pace_cols, preset_values, labels)):
-        with col:
-            is_sel = selected_pace == val
-            btn_style = (
-                "background:#1973ff;color:white;border-color:#1973ff;"
-                if is_sel else ""
-            )
-            if st.button(lbl, key=f"pace_btn_{val}",
-                         use_container_width=True,
-                         help=f"Joutuisuus {val}%"):
-                st.session_state.obs_pace_value = val
-                st.rerun()
-
     col_custom, col_note = st.columns([1, 2])
     with col_custom:
         custom_pace = st.number_input(
-            "Tai kirjoita arvo",
+            "Joutuisuus %",
             min_value=10, max_value=200,
-            value=selected_pace,
+            value=st.session_state.get("obs_pace_value", 100),
             step=5,
             key="obs_pace_custom",
-            label_visibility="visible",
         )
-        if custom_pace != selected_pace:
-            st.session_state.obs_pace_value = custom_pace
+        st.session_state.obs_pace_value = custom_pace
 
     note_key_idx = st.session_state.get("obs_note_idx", 0)
     with col_note:
