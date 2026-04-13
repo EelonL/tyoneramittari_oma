@@ -51,6 +51,7 @@ def default_state() -> Dict[str, Any]:
         "work_items": [],
         "events": [],
         "segments": [],
+        "observations": [],
         "active_item": None,
         "active_start": None,
         "measurement_started": False,
@@ -202,6 +203,16 @@ def build_excel_bytes() -> bytes:
         start_row = len(meta) + 3
         summary.to_excel(writer, index=False, sheet_name="Yhteenveto", startrow=start_row)
         detail.to_excel(writer, index=False, sheet_name="Tapahtumat")
+
+        obs_list = st.session_state.app_state.get("observations", [])
+        if obs_list:
+            obs_df = pd.DataFrame(obs_list).rename(columns={
+                "ts": "Aikaleima",
+                "item": "Työnerä",
+                "joutuisuus": "Joutuisuus (%)",
+                "huomio": "Huomio",
+            })
+            obs_df.to_excel(writer, index=False, sheet_name="Joutuisuus")
     output.seek(0)
     wb = load_workbook(output)
     for ws in wb.worksheets:
@@ -526,6 +537,125 @@ def measurement_ui() -> None:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # ── Pikalisäys: uusi työnerä lennosta ──
+    st.markdown(
+        """
+        <div style="margin-top:1.2rem; padding: 1rem 1.2rem;
+            background: rgba(255,255,255,0.55); backdrop-filter: blur(10px);
+            border: 1px dashed rgba(25,115,255,0.35); border-radius: 18px;">
+            <div style="font-size:0.82rem; font-weight:600; color:#5a7490;
+                text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.6rem;">
+                ＋ Lisää puuttuva työnerä
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    col_input, col_btn = st.columns([4, 1])
+    with col_input:
+        new_item = st.text_input(
+            "Uusi työnerä",
+            key="quick_add_input",
+            placeholder="Kirjoita työnerän nimi...",
+            label_visibility="collapsed",
+        )
+    with col_btn:
+        if st.button("Lisää ja käynnistä", key="quick_add_btn", use_container_width=True):
+            name = new_item.strip()
+            if name and name not in state["work_items"]:
+                state["work_items"].append(name)
+                persist_state()
+                start_item(name)
+                st.rerun()
+            elif name in state["work_items"]:
+                start_item(name)
+                st.rerun()
+            else:
+                st.warning("Anna työnerän nimi.")
+
+
+@st.fragment()
+def observation_ui() -> None:
+    state = st.session_state.app_state
+    active_item = state.get("active_item")
+
+    if not active_item:
+        return
+
+    st.markdown(
+        """
+        <div style="margin: 0.6rem 0 0.5rem;
+            padding: 1rem 1.2rem 0.7rem;
+            background: rgba(255,255,255,0.55); backdrop-filter: blur(10px);
+            border: 1px solid rgba(25,115,255,0.18); border-radius: 18px;">
+            <div style="font-size:0.82rem; font-weight:600; color:#5a7490;
+                text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.7rem;">
+                📋 Joutuisuushavainto — käynnissä olevalle työnerälle
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption(f"Kirjataan kohteelle: **{active_item}**")
+
+    # Pikavalinnat
+    st.markdown("**Joutuisuus %**")
+    pace_cols = st.columns(6)
+    preset_values = [60, 75, 100, 115, 125, 133]
+    labels =       ["60", "75", "100", "115", "125", "133"]
+
+    selected_pace = st.session_state.get("obs_pace_value", 100)
+
+    for i, (col, val, lbl) in enumerate(zip(pace_cols, preset_values, labels)):
+        with col:
+            is_sel = selected_pace == val
+            btn_style = (
+                "background:#1973ff;color:white;border-color:#1973ff;"
+                if is_sel else ""
+            )
+            if st.button(lbl, key=f"pace_btn_{val}",
+                         use_container_width=True,
+                         help=f"Joutuisuus {val}%"):
+                st.session_state.obs_pace_value = val
+                st.rerun()
+
+    col_custom, col_note = st.columns([1, 2])
+    with col_custom:
+        custom_pace = st.number_input(
+            "Tai kirjoita arvo",
+            min_value=10, max_value=200,
+            value=selected_pace,
+            step=5,
+            key="obs_pace_custom",
+            label_visibility="visible",
+        )
+        if custom_pace != selected_pace:
+            st.session_state.obs_pace_value = custom_pace
+
+    with col_note:
+        note = st.text_input(
+            "Vapaaehtoinen huomio",
+            key="obs_note",
+            placeholder="Esim. häiriötekijä, erikoistilanne...",
+        )
+
+    if st.button("📋 Kirjaa havainto", key="obs_save_btn", use_container_width=True):
+        obs = {
+            "ts": fmt_ts(now_local()),
+            "item": active_item,
+            "joutuisuus": st.session_state.get("obs_pace_value", 100),
+            "huomio": note.strip(),
+        }
+        state["observations"].append(obs)
+        persist_state()
+        st.session_state.obs_note = ""
+        st.success(
+            f"✓ Kirjattu — {active_item}, joutuisuus "
+            f"{obs['joutuisuus']}%"
+            + (f", huomio: {obs['huomio']}" if obs['huomio'] else "")
+        )
+
 
 def stop_button_ui() -> None:
     state = st.session_state.app_state
@@ -554,7 +684,7 @@ def live_tables() -> None:
     summary = summary_df()
 
     st.subheader("Mittausdata")
-    t1, t2 = st.tabs(["Tapahtumat", "Yhteenveto"])
+    t1, t2, t3 = st.tabs(["Tapahtumat", "Yhteenveto", "Joutuisuus"])
 
     with t1:
         if detail.empty:
@@ -567,6 +697,19 @@ def live_tables() -> None:
             st.write("Ei vielä yhteenvetoa.")
         else:
             st.dataframe(summary, use_container_width=True)
+
+    with t3:
+        obs_list = st.session_state.app_state.get("observations", [])
+        if not obs_list:
+            st.write("Ei vielä havaintoja.")
+        else:
+            obs_df = pd.DataFrame(obs_list).rename(columns={
+                "ts": "Aikaleima",
+                "item": "Työnerä",
+                "joutuisuus": "Joutuisuus (%)",
+                "huomio": "Huomio",
+            })
+            st.dataframe(obs_df, use_container_width=True)
 
 
 def save_ui() -> None:
@@ -592,6 +735,7 @@ def main() -> None:
     work_items_editor()
     st.divider()
     measurement_ui()
+    observation_ui()
     stop_button_ui()
     st.divider()
     live_tables()
