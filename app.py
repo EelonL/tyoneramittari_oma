@@ -633,10 +633,11 @@ def observation_ui() -> None:
         if custom_pace != selected_pace:
             st.session_state.obs_pace_value = custom_pace
 
+    note_key_idx = st.session_state.get("obs_note_idx", 0)
     with col_note:
         note = st.text_input(
             "Vapaaehtoinen huomio",
-            key="obs_note",
+            key=f"obs_note_{note_key_idx}",
             placeholder="Esim. häiriötekijä, erikoistilanne...",
         )
 
@@ -649,7 +650,7 @@ def observation_ui() -> None:
         }
         state["observations"].append(obs)
         persist_state()
-        st.session_state.obs_note = ""
+        st.session_state.obs_note_idx = note_key_idx + 1
         st.success(
             f"✓ Kirjattu — {active_item}, joutuisuus "
             f"{obs['joutuisuus']}%"
